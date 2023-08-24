@@ -222,7 +222,7 @@ jobs:
       # Customize Loop: Download and apply patches
       - name: Customize Loop
         run: |
-          curl https://raw.githubusercontent.com/bjorkert/patches/master/test1.patch | git apply
+          curl https://raw.githubusercontent.com/bjorkert/patches/master/test2.patch | git apply --directory=Loop
 
           # LoopWorkspace patches
           # -applies any patches located in the LoopWorkspace/patches/ directory
