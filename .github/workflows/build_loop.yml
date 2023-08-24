@@ -68,20 +68,13 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Get ref for LoopKit/LoopWorkspace:dev
-        SHA=$(curl -sS https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/git/refs \
-          | jq '.[] | select(.ref == "refs/heads/dev" ) | .object.sha' \
-          | tr -d '"'
-        );
-        
         # Create alive branch based on LoopKit/LoopWorkspace:dev
         gh api \
           --method POST \
           -H "Authorization: token $GITHUB_TOKEN" \
           -H "Accept: application/vnd.github.v3+json" \
           /repos/${{ github.repository_owner }}/LoopWorkspace/git/refs \
-          -f ref='refs/heads/alive' \
-          -f sha=$SHA
+          -f ref='refs/heads/alive'
   
   # Checks for changes in upstream repository; if changes exist prompts sync for build
   # Performs keepalive to avoid stale fork
