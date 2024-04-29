@@ -28,6 +28,47 @@ jobs:
         uses: actions/checkout@v3
         with:
           submodules: recursive
+          
+      # Customize Loop: Download and apply patches
+      - name: Customize Loop
+        run: | 
+
+          # The lines below add the customizations listed using the CustomizationSelect script
+          # The "\" is a continuation character 
+          #   the line following a "\" cannot be blank - that causes the Action to never complete
+          /bin/bash -c "$(curl -fsSL \
+          https://raw.githubusercontent.com/loopandlearn/lnl-scripts/main/CustomizationSelect.sh)" \
+          omnipod_cage \
+          dexcom_sage \
+          dexcom_upload_readings \
+          override_sens \
+          now_line \
+          lnl_icon \
+          2002 \
+          algorithm_experiments \
+          testflight_expiration_warning
+
+          # the final customization listed above CANNOT have a continuation character "\"
+          # more customizations can be pasted after this line
+
+
+          # Loop: Manual bolus threshold
+          curl https://raw.githubusercontent.com/bjorkert/patches/master/manualBolusThreshold.patch | git apply --directory=Loop
+
+          # Loop: Future carbs 90 minutes
+          curl https://raw.githubusercontent.com/bjorkert/patches/master/90m.patch | git apply --directory=Loop
+
+          # Dash Fast Forward
+          curl https://raw.githubusercontent.com/bjorkert/patches/master/fast_forward.patch | git apply
+
+          # Basic I:C Bolus Calculation
+          curl https://raw.githubusercontent.com/bjorkert/patches/master/basicICBolusCalc.patch | git apply
+
+          # 2 hours Lolipop
+          curl https://raw.githubusercontent.com/bjorkert/patches/master/2hlollipop.patch | git apply
+
+          # Fix parsing of age field of message
+          curl https://github.com/LoopKit/G7SensorKit/commit/f13af55f1c1b570cbb905a346a301e60d4c8d360.patch | git apply --directory=G7SensorKit
       
       # Patch Fastlane Match to not print tables
       - name: Patch Match Tables
