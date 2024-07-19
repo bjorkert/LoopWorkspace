@@ -270,7 +270,7 @@ jobs:
           # more customizations can be pasted after this line
 
           # Loop: Manual bolus threshold
-          curl https://raw.githubusercontent.com/bjorkert/patches/master/manualBolusThreshold.patch | git apply --directory=Loop
+          #curl https://raw.githubusercontent.com/bjorkert/patches/master/manualBolusThreshold.patch | git apply --directory=Loop
 
           # Loop: Future carbs 90 minutes
           curl https://raw.githubusercontent.com/bjorkert/patches/master/90m.patch | git apply --directory=Loop
