@@ -264,6 +264,7 @@ jobs:
           now_line \
           lnl_icon \
           2002 \
+          2hlollipop \
           basal_lock
 
           # the final customization listed above CANNOT have a continuation character "\"
