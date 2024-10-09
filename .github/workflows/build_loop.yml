@@ -276,6 +276,9 @@ jobs:
           # Loop: Future carbs 90 minutes
           #curl https://raw.githubusercontent.com/bjorkert/patches/master/90m.patch | git apply --directory=Loop
 
+          curl https://github.com/loopandlearn/Loop/commit/ae76f90955843df0e1e4297f6c7c669d21e5eae2.patch | git apply --directory=Loop
+
+
           # Basic I:C Bolus Calculation
           #curl https://raw.githubusercontent.com/bjorkert/patches/master/basicICBolusCalc.patch | git apply
 
