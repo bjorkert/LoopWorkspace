@@ -273,6 +273,7 @@ jobs:
           lnl_icon \
           2002 \
           2hlollipop \
+          remote_window \
           basal_lock
 
           # the final customization listed above CANNOT have a continuation character "\"
