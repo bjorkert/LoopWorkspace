@@ -44,7 +44,13 @@ platform :ios do
       api_key: api_key,
     )
 
-    current_build_number = previous_build_number + 1
+    # PATCH (temporary): App Store Connect's API reports 61 as the latest build, but
+    # Apple's upload validator already has a 62 on record — a build the API does not
+    # list — so `previous_build_number + 1` kept requesting 62 and being rejected.
+    # Pin a number clear of the gap. Once this build has processed, the API catches up
+    # and the auto-increment works again: return to main and delete this branch.
+    # current_build_number = previous_build_number + 1
+    current_build_number = 70
 
     increment_build_number(
       xcodeproj: "#{GITHUB_WORKSPACE}/Loop/Loop.xcodeproj",
