@@ -199,7 +199,7 @@ jobs:
           basal_lock \
           xdrip_cgm
 
-          curl -L https://https://raw.githubusercontent.com/loopandlearn/customization/cgm_sensor_notes/cgm_sensor_notes/cgm_sensor_notes.patch | git apply -v --whitespace=fix
+          curl -L https://raw.githubusercontent.com/loopandlearn/customization/cgm_sensor_notes/cgm_sensor_notes/cgm_sensor_notes.patch | git apply -v --whitespace=fix
 
           # the final customization listed above CANNOT have a continuation character "\"
           # more customizations can be pasted after this line
