@@ -184,9 +184,8 @@ jobs:
       - name: Customize Loop
         run: |
 
-          export PATCH_BRANCH="xdrip_cgm"
           /bin/bash -c "$(curl -fsSL \
-          https://raw.githubusercontent.com/loopandlearn/lnl-scripts/xdrip_cgm/CustomizationSelect.sh)" \
+          https://raw.githubusercontent.com/loopandlearn/lnl-scripts/main/CustomizationSelect.sh)" \
           override_sens \
           now_line \
           lnl_icon \
