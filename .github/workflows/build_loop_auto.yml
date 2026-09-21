@@ -212,6 +212,36 @@ jobs:
       - name: Customize Loop
         run: |
 
+          /bin/bash -c "$(curl -fsSL \
+          https://raw.githubusercontent.com/loopandlearn/lnl-scripts/main/CustomizationSelect.sh)" \
+          override_sens \
+          now_line \
+          lnl_icon \
+          2002 \
+          2hlollipop \
+          basal_lock \
+          xdrip_cgm
+
+          curl -L https://raw.githubusercontent.com/loopandlearn/customization/cgm_sensor_notes/cgm_sensor_notes/cgm_sensor_notes.patch | git apply -v --whitespace=fix
+
+          # the final customization listed above CANNOT have a continuation character "\"
+          # more customizations can be pasted after this line
+
+          # Loop: Manual bolus threshold
+          #curl https://raw.githubusercontent.com/bjorkert/patches/master/manualBolusThreshold.patch | git apply --directory=Loop
+
+          # Loop: Future carbs 90 minutes
+          #curl https://raw.githubusercontent.com/bjorkert/patches/master/90m.patch | git apply --directory=Loop
+
+          #curl https://github.com/loopandlearn/Loop/commit/ae76f90955843df0e1e4297f6c7c669d21e5eae2.patch | git apply --directory=Loop
+
+
+          # Basic I:C Bolus Calculation
+          #curl https://raw.githubusercontent.com/bjorkert/patches/master/basicICBolusCalc.patch | git apply
+
+          # 2 hours Lolipop
+          #curl https://raw.githubusercontent.com/bjorkert/patches/master/2hlollipop.patch | git apply
+
           # LoopWorkspace patches
           # -applies any patches located in the LoopWorkspace/patches/ directory
           if $(ls ./patches/* &> /dev/null); then
