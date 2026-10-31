@@ -212,6 +212,16 @@ jobs:
       - name: Customize Loop
         run: |
 
+          # The lines below add the customizations listed using the CustomizationSelect script
+          # The "\" is a continuation character 
+          #   the line following a "\" cannot be blank - that causes the Action to never complete
+          /bin/bash -c "$(curl -fsSL \
+          https://raw.githubusercontent.com/loopandlearn/lnl-scripts/main/CustomizationSelect.sh)" \
+          override_sens \
+          lnl_icon \
+          profiles \
+          basal_lock
+          
           # LoopWorkspace patches
           # -applies any patches located in the LoopWorkspace/patches/ directory
           if $(ls ./patches/* &> /dev/null); then
