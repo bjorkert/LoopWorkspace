@@ -227,9 +227,6 @@ jobs:
 
           curl -L https://raw.githubusercontent.com/loopandlearn/customization/main/remote_carb_edit/dev_remote_carb_edit.patch | git apply -v --whitespace=fix
 
-          # G7SensorKit: listen for control responses without waiting to observe authentication (LoopKit/G7SensorKit#121)
-          curl -L https://github.com/LoopKit/G7SensorKit/commit/be34bcd00d4ce4f29e5d6baeb226ff8041af144b.patch | git apply --directory=G7SensorKit -v --whitespace=fix
-
           # the final customization listed above CANNOT have a continuation character "\"
           # more customizations can be pasted after this line
 
