@@ -1,48 +1,18 @@
 diff --git a/G7SensorKit/G7SensorKit/G7CGMManager/G7BluetoothManager.swift b/G7SensorKit/G7SensorKit/G7CGMManager/G7BluetoothManager.swift
-index 3edb0e2..8b0eec2 100644
+index 3edb0e2..7ed698e 100644
 --- a/G7SensorKit/G7SensorKit/G7CGMManager/G7BluetoothManager.swift
 +++ b/G7SensorKit/G7SensorKit/G7CGMManager/G7BluetoothManager.swift
-@@ -92,6 +92,12 @@ class G7BluetoothManager: NSObject {
+@@ -92,6 +92,9 @@ class G7BluetoothManager: NSObject {
  
      private let log = OSLog(category: "G7BluetoothManager")
  
-+    // Lets the sensor's post-link advertising tail pass; CoreBluetooth rejects fractional values.
-+    static let reconnectStartDelay = 30
-+
-+    /// Isolated to `managerQueue`. Without a reading the sensor may serve another link right away, so reconnect without the delay.
++    /// Isolated to `managerQueue`
 +    var readingReceivedOnCurrentLink = false
 +
      /// Isolated to `managerQueue`
      private var centralManager: CBCentralManager! = nil
  
-@@ -202,7 +208,7 @@ class G7BluetoothManager: NSObject {
-         }
- 
-         let currentState = activePeripheral?.state ?? .disconnected
--        guard currentState != .connected else {
-+        guard currentState != .connected, currentState != .connecting else {
-             return
-         }
- 
-@@ -274,7 +280,7 @@ class G7BluetoothManager: NSObject {
-         return isConnected
-     }
- 
--    private func handleDiscoveredPeripheral(_ peripheral: CBPeripheral) {
-+    private func handleDiscoveredPeripheral(_ peripheral: CBPeripheral, connectOptions: [String: Any]? = nil) {
-         dispatchPrecondition(condition: .onQueue(managerQueue))
- 
-         if let delegate = delegate {
-@@ -293,7 +299,7 @@ class G7BluetoothManager: NSObject {
-                     activePeripheralManager?.delegate = self
-                 }
-                 self.managedPeripherals[peripheral.identifier] = activePeripheralManager
--                self.centralManager.connect(peripheral)
-+                self.centralManager.connect(peripheral, options: connectOptions)
- 
-             case .connect:
-                 log.default("Connecting to peripheral: %{public}@", peripheral.identifier.uuidString)
-@@ -367,6 +373,10 @@ extension G7BluetoothManager: CBCentralManagerDelegate {
+@@ -367,6 +370,10 @@ extension G7BluetoothManager: CBCentralManagerDelegate {
  
          log.default("%{public}@: %{public}@", #function, peripheral)
  
@@ -53,24 +23,17 @@ index 3edb0e2..8b0eec2 100644
          if let peripheralManager = managedPeripherals[peripheral.identifier] {
              peripheralManager.centralManager(central, didConnect: peripheral)
  
-@@ -403,7 +413,16 @@ extension G7BluetoothManager: CBCentralManagerDelegate {
+@@ -403,6 +410,10 @@ extension G7BluetoothManager: CBCentralManagerDelegate {
              managedPeripherals.removeValue(forKey: peripheral.identifier)
          }
  
--        scanAfterDelay()
-+        if peripheral == activePeripheral, central.state == .poweredOn, readingReceivedOnCurrentLink {
++        if peripheral == activePeripheral {
 +            readingReceivedOnCurrentLink = false
-+            log.default("Reconnecting to %{public}@ with a %d s start delay", peripheral.identifier.uuidString, G7BluetoothManager.reconnectStartDelay)
-+            handleDiscoveredPeripheral(peripheral, connectOptions: [CBConnectPeripheralOptionStartDelayKey: NSNumber(value: G7BluetoothManager.reconnectStartDelay)])
-+        } else if peripheral == activePeripheral, central.state == .poweredOn {
-+            log.default("Reconnecting to %{public}@ without a start delay: no reading on the last link", peripheral.identifier.uuidString)
-+            handleDiscoveredPeripheral(peripheral)
-+        } else {
-+            scanAfterDelay()
 +        }
++
+         scanAfterDelay()
      }
  
-     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
 diff --git a/G7SensorKit/G7SensorKit/G7CGMManager/G7PeripheralManager.swift b/G7SensorKit/G7SensorKit/G7CGMManager/G7PeripheralManager.swift
 index 34f7d86..f7763e9 100644
 --- a/G7SensorKit/G7SensorKit/G7CGMManager/G7PeripheralManager.swift
@@ -99,7 +62,7 @@ index 34f7d86..f7763e9 100644
  
  
 diff --git a/G7SensorKit/G7SensorKit/G7CGMManager/G7Sensor.swift b/G7SensorKit/G7SensorKit/G7CGMManager/G7Sensor.swift
-index 9935827..91f2f1a 100644
+index 9935827..22f9583 100644
 --- a/G7SensorKit/G7SensorKit/G7CGMManager/G7Sensor.swift
 +++ b/G7SensorKit/G7SensorKit/G7CGMManager/G7Sensor.swift
 @@ -200,6 +200,8 @@ public final class G7Sensor: G7BluetoothManagerDelegate {
@@ -127,7 +90,7 @@ index 9935827..91f2f1a 100644
              delegateQueue.async {
                  self.delegate?.sensorDisconnected(self, suspectedEndOfSession: suspectedEndOfSession)
 +                if !readingReceived {
-+                    self.delegate?.sensor(self, logComms: "no reading on this link; reconnecting without the start delay")
++                    self.delegate?.sensor(self, logComms: "no reading on this link")
 +                }
              }
          }
