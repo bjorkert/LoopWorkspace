@@ -1,0 +1,192 @@
+diff --git a/G7SensorKit/G7SensorKit/G7CGMManager/G7CGMManager.swift b/G7SensorKit/G7SensorKit/G7CGMManager/G7CGMManager.swift
+index 3b6fe4f..32120c6 100644
+--- a/G7SensorKit/G7SensorKit/G7CGMManager/G7CGMManager.swift
++++ b/G7SensorKit/G7SensorKit/G7CGMManager/G7CGMManager.swift
+@@ -13,6 +13,12 @@ import HealthKit
+ 
+ 
+ 
++extension Notification.Name {
++    /// Posted with the live and backfilled readings the sensor marks unreliable while readings are uploaded. The
++    /// `"readings"` user info entry holds `[[String: Any]]`, each with a `"date"` (`Date`) and `"mgdl"` (`Int`).
++    public static let G7UnreliableGlucoseReadings = Notification.Name("G7UnreliableGlucoseReadings")
++}
++
+ public protocol G7StateObserver: AnyObject {
+     func g7StateDidUpdate(_ state: G7CGMManagerState?)
+     func g7ConnectionStatusDidChange()
+@@ -486,6 +492,7 @@ extension G7CGMManager: G7SensorDelegate {
+         }
+ 
+         guard message.hasReliableGlucose else {
++            postUnreliableReadings([(latestReadingTimestamp, glucose)])
+             updateDelegate(with: .error(AlgorithmError.unreliableState(message.algorithmState)))
+             return
+         }
+@@ -508,6 +515,12 @@ extension G7CGMManager: G7SensorDelegate {
+         ]))
+     }
+ 
++    private func postUnreliableReadings(_ readings: [(date: Date, glucose: UInt16)]) {
++        guard state.uploadReadings, !readings.isEmpty else { return }
++        let payload: [[String: Any]] = readings.map { ["date": $0.date, "mgdl": Int($0.glucose)] }
++        NotificationCenter.default.post(name: .G7UnreliableGlucoseReadings, object: self, userInfo: ["readings": payload])
++    }
++
+     private func generateSyncIdentifier(timestamp: UInt32) -> String {
+         guard let activatedAt = state.activatedAt, let sensorID = state.sensorID else {
+             return "invalid"
+@@ -529,6 +542,11 @@ extension G7CGMManager: G7SensorDelegate {
+             return
+         }
+ 
++        postUnreliableReadings(backfill.compactMap { entry -> (date: Date, glucose: UInt16)? in
++            guard let glucose = entry.glucose, !entry.hasReliableGlucose else { return nil }
++            return (activationDate.addingTimeInterval(TimeInterval(entry.timestamp)), glucose)
++        })
++
+         let unit = HKUnit.milligramsPerDeciliter
+ 
+         let samples = backfill.compactMap { entry -> NewGlucoseSample? in
+diff --git a/NightscoutService/NightscoutServiceKit/NightscoutService.swift b/NightscoutService/NightscoutServiceKit/NightscoutService.swift
+index 4626630..14dd1c2 100644
+--- a/NightscoutService/NightscoutServiceKit/NightscoutService.swift
++++ b/NightscoutService/NightscoutServiceKit/NightscoutService.swift
+@@ -7,6 +7,7 @@
+ //
+ 
+ import os.log
++import CryptoKit
+ import HealthKit
+ import LoopKit
+ import NightscoutKit
+@@ -65,12 +66,15 @@ public final class NightscoutService: Service {
+ 
+     private let log = OSLog(category: "NightscoutService")
+ 
++    private var unreliableGlucoseObserver: NSObjectProtocol?
++
+     public init() {
+         self.isOnboarded = false
+         self.lockedObjectIdCache = Locked(ObjectIdCache())
+         self.otpManager = OTPManager(secretStore: KeychainManager())
+         self.commandSourceV1 = RemoteCommandSourceV1(otpManager: otpManager)
+         self.commandSourceV1.delegate = self
++        observeUnreliableGlucose()
+     }
+ 
+     public required init?(rawState: RawStateValue) {
+@@ -89,6 +93,13 @@ public final class NightscoutService: Service {
+         self.commandSourceV1.delegate = self
+         
+         restoreCredentials()
++        observeUnreliableGlucose()
++    }
++
++    deinit {
++        if let unreliableGlucoseObserver {
++            NotificationCenter.default.removeObserver(unreliableGlucoseObserver)
++        }
+     }
+ 
+     public var rawState: RawStateValue {
+@@ -152,6 +163,99 @@ public final class NightscoutService: Service {
+     
+ }
+ 
++/// Uploads the G7 readings the sensor marks unreliable, live and backfilled, as "Unreliable Glucose" treatments, which
++/// LoopFollow shows as hollow orange dots. Loop itself never stores, shows or uses them.
++extension NightscoutService {
++    private static let unreliableGlucoseUploadedKey = "NightscoutService.unreliableGlucoseUploadedDates"
++    private static let unreliableGlucoseRemembered: TimeInterval = 24 * 60 * 60
++    private static let unreliableGlucoseQueue = DispatchQueue(label: "NightscoutService.unreliableGlucose", qos: .utility)
++
++    private struct UnreliableGlucoseTreatment: Encodable {
++        let eventType = "Unreliable Glucose"
++        let enteredBy = "Loop"
++        let glucoseType = "Sensor"
++        let units = "mg/dl"
++        let glucose: Int
++        let notes: String
++        let created_at: String
++    }
++
++    private func observeUnreliableGlucose() {
++        unreliableGlucoseObserver = NotificationCenter.default.addObserver(
++            forName: Notification.Name("G7UnreliableGlucoseReadings"),
++            object: nil,
++            queue: nil
++        ) { [weak self] notification in
++            guard let payload = notification.userInfo?["readings"] as? [[String: Any]] else { return }
++            let readings = payload.compactMap { reading -> (date: Date, mgdl: Int)? in
++                guard let date = reading["date"] as? Date, let mgdl = reading["mgdl"] as? Int else { return nil }
++                return (date, mgdl)
++            }
++            NightscoutService.unreliableGlucoseQueue.async {
++                self?.uploadUnreliableGlucose(readings)
++            }
++        }
++    }
++
++    /// Runs on `unreliableGlucoseQueue` only.
++    private func uploadUnreliableGlucose(_ readings: [(date: Date, mgdl: Int)]) {
++        guard let siteURL, let apiSecret, !apiSecret.isEmpty else {
++            log.default("Unreliable G7 readings not uploaded: Nightscout is not configured")
++            return
++        }
++
++        let defaults = UserDefaults.standard
++        let key = NightscoutService.unreliableGlucoseUploadedKey
++        let cutoff = Date().addingTimeInterval(-NightscoutService.unreliableGlucoseRemembered).timeIntervalSince1970
++        var uploaded = Set((defaults.array(forKey: key) as? [Double] ?? []).filter { $0 > cutoff })
++
++        var fresh: [(date: Date, mgdl: Int)] = []
++        for reading in readings.sorted(by: { $0.date < $1.date }) {
++            let seconds = reading.date.timeIntervalSince1970.rounded()
++            guard seconds > cutoff, uploaded.insert(seconds).inserted else { continue }
++            fresh.append(reading)
++        }
++        guard !fresh.isEmpty else { return }
++
++        let formatter = ISO8601DateFormatter()
++        let treatments = fresh.map {
++            UnreliableGlucoseTreatment(
++                glucose: $0.mgdl,
++                notes: "Unreliable reading (sensor issue): \($0.mgdl) mg/dL",
++                created_at: formatter.string(from: $0.date)
++            )
++        }
++        let hashedSecret = Insecure.SHA1.hash(data: Data(apiSecret.utf8)).map { String(format: "%02x", $0) }.joined()
++
++        var request = URLRequest(url: siteURL.appendingPathComponent("api/v1/treatments.json"))
++        request.httpMethod = "POST"
++        request.timeoutInterval = 30
++        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
++        request.addValue(hashedSecret, forHTTPHeaderField: "api-secret")
++        do {
++            request.httpBody = try JSONEncoder().encode(treatments)
++        } catch {
++            log.error("Unreliable G7 readings not encoded: %{public}@", String(describing: error))
++            return
++        }
++
++        let summary = fresh.map { "\($0.mgdl)" }.joined(separator: ", ")
++        URLSession.shared.dataTask(with: request) { [log] _, response, error in
++            guard error == nil, let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
++                log.error("Unreliable G7 reading upload failed: %{public}@", String(describing: error ?? URLError(.badServerResponse)))
++                return
++            }
++            NightscoutService.unreliableGlucoseQueue.async {
++                let cutoff = Date().addingTimeInterval(-NightscoutService.unreliableGlucoseRemembered).timeIntervalSince1970
++                var stored = Set((defaults.array(forKey: key) as? [Double] ?? []).filter { $0 > cutoff })
++                fresh.forEach { stored.insert($0.date.timeIntervalSince1970.rounded()) }
++                defaults.set(Array(stored), forKey: key)
++            }
++            log.default("Uploaded unreliable G7 readings: %{public}@ mg/dL", summary)
++        }.resume()
++    }
++}
++
+ extension NightscoutService: RemoteDataService {
+ 
+     public func uploadTemporaryOverrideData(updated: [LoopKit.TemporaryScheduleOverride], deleted: [LoopKit.TemporaryScheduleOverride], completion: @escaping (Result<Bool, Error>) -> Void) {
